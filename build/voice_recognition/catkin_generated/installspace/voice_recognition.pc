@@ -1,0 +1,8 @@
+prefix=/home/user/catkin_ws/install
+
+Name: voice_recognition
+Description: Description of voice_recognition
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

@@ -6,4 +6,6 @@
 # testing this directory and lists subdirectories to be tested as well.
 subdirs("gtest")
 subdirs("detection")
+subdirs("project")
+subdirs("voice_recognition")
 subdirs("yolov3")

@@ -132,6 +132,8 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("/home/user/catkin_ws/build/gtest/cmake_install.cmake")
   include("/home/user/catkin_ws/build/detection/cmake_install.cmake")
+  include("/home/user/catkin_ws/build/project/cmake_install.cmake")
+  include("/home/user/catkin_ws/build/voice_recognition/cmake_install.cmake")
   include("/home/user/catkin_ws/build/yolov3/cmake_install.cmake")
 
 endif()

@@ -1,2 +1,2 @@
-detection:yolov3
+detection:freenect_stack/freenect_camera:freenect_stack/freenect_launch:freenect_stack/freenect_stack:project:voice_recognition:yolov3
 -DCATKIN_DEVEL_PREFIX=/home/user/catkin_ws/devel -DCMAKE_INSTALL_PREFIX=/home/user/catkin_ws/install -G Unix Makefiles

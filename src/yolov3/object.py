@@ -40,4 +40,3 @@ def detect_and_display():
 if __name__ == '__main__':
     rospy.init_node('yolo_detection_node')
     detect_and_display()
-
