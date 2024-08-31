@@ -1,11 +1,13 @@
 #!/usr/bin/env python
-import cv2
-import torch
-import mediapipe as mp
 import rospy
+import torch
+from sensor_msgs.msg import Image
+from std_msgs.msg import String
+from cv_bridge import CvBridge, CvBridgeError
+import cv2
+import mediapipe as mp
 from gtts import gTTS
 from playsound import playsound
-from std_msgs.msg import String
 import os
 import warnings
 import time
@@ -25,18 +27,29 @@ class YoloV5Ros:
         
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/user/yolov5/runs/train/exp10/weights/best.pt').to(self.device)
-        self.cap = cv2.VideoCapture(0)  # Open video capture from the camera
+        self.bridge = CvBridge()  # Initialize CvBridge for converting ROS images
         self.hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
         self.selected_object = None
         self.frame_id = 0  # Frame counter to skip frames
         self.last_detection_time = 0  # Time of last detection
         self.delay = 10  # Delay in seconds
 
+        # Subscriber for Kinect RGB image
+        rospy.Subscriber('/camera/rgb/image_raw', Image, self.image_callback)
+
+    def image_callback(self, msg):
+        try:
+            # Convert the ROS image message to a format OpenCV can work with
+            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            self.process_frame(frame)
+        except CvBridgeError as e:
+            rospy.logerr(f'CvBridge Error: {e}')
+
     def process_frame(self, frame):
         current_time = time.time()
         self.frame_id += 1
         if self.frame_id % 2 != 0:  # Skip every other frame
-            return frame
+            return
 
         # Increase resolution for better detection
         frame = cv2.resize(frame, (800, 600))
@@ -59,7 +72,7 @@ class YoloV5Ros:
                 
                 # Get the tip of the index finger
                 finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-                finger_tip_coords = (int(finger_tip.x * 640), int(finger_tip.y * 480))
+                finger_tip_coords = (int(finger_tip.x * 800), int(finger_tip.y * 600))
                 
                 # Draw a small circle at the fingertip
                 cv2.circle(frame, finger_tip_coords, 10, (0, 255, 0), -1)  # Green dot for fingertip
@@ -147,18 +160,7 @@ class YoloV5Ros:
         cv2.imwrite(filename, image)
 
     def run(self):
-        while True:
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-            
-            self.process_frame(frame)
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-        
-        self.cap.release()
-        cv2.destroyAllWindows()
+        rospy.spin()  # Keep the node running
 
 if __name__ == '__main__':
     try:
