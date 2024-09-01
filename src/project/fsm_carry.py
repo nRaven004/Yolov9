@@ -21,7 +21,7 @@ import roslaunch
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/user/yolov5/runs/train/exp10/weights/best.pt').to(device)
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/user/Downloads/additional_ws/src/yolov3/best.pt').to(device)
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
 mp_drawing = mp.solutions.drawing_utils
@@ -40,6 +40,7 @@ class WaitForYes(smach.State):
         self.microphone = sr.Microphone()
 
     def execute(self, userdata):
+        speak_ready_to_start()
         rospy.loginfo("Waiting for 'Yes' command...")
         response = self.recognize_speech_from_mic()
         if response and "yes" in response:
@@ -63,24 +64,34 @@ class WaitForYes(smach.State):
             return None  
 class DetectHand(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['left', 'right'], input_keys=['image_in'], output_keys=['hand_position'])
+        smach.State.__init__(self, outcomes=['left', 'right'], output_keys=['hand_position'])
         self.bridge = CvBridge()
-        self.hands = hands  # Use the global MediaPipe hands instance
-        self.mp_drawing = mp_drawing  # Use the global MediaPipe drawing utils instance
+        self.hands = mp.solutions.hands.Hands()  # Initialize MediaPipe Hands
+        self.mp_drawing = mp.solutions.drawing_utils  # Initialize MediaPipe drawing utilities
         self.pub = rospy.Publisher('/camera/processed_image_mouse_left', Image, queue_size=10)  # Publisher for processed image
-
+        self.image_sub = rospy.Subscriber('/kinect_camera/image_raw', Image, self.image_callback)
+        self.latest_image = None
+    def image_callback(self, msg):
+        try:
+            self.latest_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        except CvBridgeError as e:
+            rospy.logerr(f"CvBridge Error: {e}")
     def execute(self, userdata):
         rospy.loginfo("Detecting hand...")
-        image = userdata.image_in
-        hand_position = self.detect_hand(image)
-        
-        if hand_position:
-            userdata.hand_position = hand_position
-            return hand_position
+        # Wait for an image to be captured
+        rospy.sleep(1)
+        if self.latest_image is not None:
+            # Detect hand position
+            hand_position = self.detect_hand(self.latest_image)
+            if hand_position:
+                userdata.hand_position = hand_position
+                return hand_position  # 'left' or 'right' based on detected hand position
+            else:
+                rospy.logwarn("Hand position not detected!")
+                return 'left'  # Default fallback; consider if this makes sense for your FSM logic
         else:
-            rospy.logwarn("Hand position not detected!")
-            return 'left'  # Default fallback; consider if this makes sense for your FSM logic
-
+            rospy.logwarn("No image available from Kinect.")
+            return 'left'  # Default fallback if no image is available
     def detect_hand(self, image):
         try:
             # Convert ROS Image to OpenCV format
@@ -88,40 +99,31 @@ class DetectHand(smach.State):
         except CvBridgeError as e:
             rospy.logerr(f"CvBridge Error: {e}")
             return None
-
-        # Process the image with MediaPipe
+        # Convert the image from BGR to RGB format for MediaPipe processing
         frame_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         results = self.hands.process(frame_rgb)
-
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                # Draw hand landmarks
-                self.mp_drawing.draw_landmarks(cv_image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                
-                # Determine hand position (simplified example)
-                index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                # Draw hand landmarks on the image
+                self.mp_drawing.draw_landmarks(cv_image, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
+                # Simplified example: determine if the hand is on the left or right side
+                index_finger_tip = hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP]
                 x = int(index_finger_tip.x * cv_image.shape[1])
-                if x < cv_image.shape[1] // 2:
-                    hand_position = 'left'
-                else:
-                    hand_position = 'right'
-                
+                # Determine the hand position as 'left' or 'right'
+                hand_position = 'left' if x < cv_image.shape[1] // 2 else 'right'
                 # Publish the processed image
                 try:
                     ros_image = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
                     self.pub.publish(ros_image)
                 except CvBridgeError as e:
                     rospy.logerr(f"CvBridge Error: {e}")
-
                 return hand_position
-
-        # Publish the processed image even if no hand is detected
+        # If no hand is detected, still publish the processed image
         try:
             ros_image = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
             self.pub.publish(ros_image)
         except CvBridgeError as e:
             rospy.logerr(f"CvBridge Error: {e}")
-
         return None
 class MoveToChair(smach.State):
     def __init__(self, left=None):
@@ -170,7 +172,7 @@ class DetectAndGrabBag(smach.State):
         smach.State.__init__(self, outcomes=['bag_grabbed'], input_keys=['image_in'])
         self.bridge = CvBridge()
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/user/yolov5/runs/train/exp10/weights/best.pt').to(self.device)
+        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/user/Downloads/additional_ws/src/yolov3/best.pt').to(self.device)
         self.pub = rospy.Publisher('Test', String, queue_size=10)
 
     def execute(self, userdata):
@@ -214,7 +216,7 @@ class TurnAndFollow(smach.State):
         # Start the follower node via roslaunch
         uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
         roslaunch.configure_logging(uuid)
-        launch = roslaunch.parent.ROSLaunchParent(uuid, ["/home/user/Documents/additional_ws/src/turtlebot_apps/turtlebot_follower/launch/follower.launch"])
+        launch = roslaunch.parent.ROSLaunchParent(uuid, ["/home/user/Downloads/additional_ws/src/turtlebot_apps/turtlebot_follower/launch/follower.launch"])
         launch.start()
         rospy.loginfo("Follower node launched.")
 
@@ -324,6 +326,7 @@ def main():
     # Create the state machine
     sm = smach.StateMachine(outcomes=['completed'])
     sm.userdata.hand_position = None
+    sm.userdata.image_in = None  # Initialize image_in with a valid image or placeholder
 
     with sm:
         smach.StateMachine.add('WAIT_FOR_YES', WaitForYes(), transitions={'yes': 'DETECT_HAND'})
@@ -337,6 +340,7 @@ def main():
 
     # Start the execution of the state machine
     outcome = sm.execute()
+
 
 if __name__ == '__main__':
     main()
