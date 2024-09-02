@@ -21,12 +21,10 @@ import roslaunch
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/user/Downloads/additional_ws/src/yolov3/best.pt').to(device)
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/user/catkin_ws/src/project/Best,py-object/best.pt').to(device)
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
 mp_drawing = mp.solutions.drawing_utils
-
-# Helper functions for text-to-speech and speech recognition
 def speak_ready_to_start():
     """Convert the specific text to speech and play it."""
     text = "Are you ready to start?"
@@ -38,7 +36,6 @@ class WaitForYes(smach.State):
         smach.State.__init__(self, outcomes=['yes'])
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
-
     def execute(self, userdata):
         speak_ready_to_start()
         rospy.loginfo("Waiting for 'Yes' command...")
@@ -47,7 +44,6 @@ class WaitForYes(smach.State):
             rospy.loginfo("Received 'Yes' command.")
             return 'yes'
         return 'yes'  # Default outcome to allow retry or handle as needed
-
     def recognize_speech_from_mic(self):
         """Recognize speech using the microphone."""
         with self.microphone as source:
@@ -64,66 +60,38 @@ class WaitForYes(smach.State):
             return None  
 class DetectHand(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['left', 'right'], output_keys=['hand_position'])
+        smach.State.__init__(self, outcomes=['left', 'right'], input_keys=['image_in'], output_keys=['hand_position'])
         self.bridge = CvBridge()
-        self.hands = mp.solutions.hands.Hands()  # Initialize MediaPipe Hands
-        self.mp_drawing = mp.solutions.drawing_utils  # Initialize MediaPipe drawing utilities
-        self.pub = rospy.Publisher('/camera/processed_image_mouse_left', Image, queue_size=10)  # Publisher for processed image
-        self.image_sub = rospy.Subscriber('/kinect_camera/image_raw', Image, self.image_callback)
-        self.latest_image = None
-    def image_callback(self, msg):
-        try:
-            self.latest_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-        except CvBridgeError as e:
-            rospy.logerr(f"CvBridge Error: {e}")
+        self.hands = mp.solutions.hands.Hands()
+        self.mp_drawing = mp.solutions.drawing_utils
     def execute(self, userdata):
         rospy.loginfo("Detecting hand...")
-        # Wait for an image to be captured
-        rospy.sleep(1)
-        if self.latest_image is not None:
-            # Detect hand position
-            hand_position = self.detect_hand(self.latest_image)
+        if userdata.image_in is not None:
+            try:
+                cv_image = self.bridge.imgmsg_to_cv2(userdata.image_in, "bgr8")
+            except CvBridgeError as e:
+                rospy.logerr(f"CvBridge Error: {e}")
+                return 'left'
+
+            hand_position = self.detect_hand(cv_image)
             if hand_position:
                 userdata.hand_position = hand_position
-                return hand_position  # 'left' or 'right' based on detected hand position
+                return hand_position
             else:
                 rospy.logwarn("Hand position not detected!")
-                return 'left'  # Default fallback; consider if this makes sense for your FSM logic
+                return 'left'
         else:
-            rospy.logwarn("No image available from Kinect.")
-            return 'left'  # Default fallback if no image is available
+            rospy.logwarn("No image available in 'image_in'.")
+            return 'left'
     def detect_hand(self, image):
-        try:
-            # Convert ROS Image to OpenCV format
-            cv_image = self.bridge.imgmsg_to_cv2(image, "bgr8")
-        except CvBridgeError as e:
-            rospy.logerr(f"CvBridge Error: {e}")
-            return None
-        # Convert the image from BGR to RGB format for MediaPipe processing
-        frame_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+        frame_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = self.hands.process(frame_rgb)
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                # Draw hand landmarks on the image
-                self.mp_drawing.draw_landmarks(cv_image, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
-                # Simplified example: determine if the hand is on the left or right side
+                self.mp_drawing.draw_landmarks(image, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
                 index_finger_tip = hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP]
-                x = int(index_finger_tip.x * cv_image.shape[1])
-                # Determine the hand position as 'left' or 'right'
-                hand_position = 'left' if x < cv_image.shape[1] // 2 else 'right'
-                # Publish the processed image
-                try:
-                    ros_image = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
-                    self.pub.publish(ros_image)
-                except CvBridgeError as e:
-                    rospy.logerr(f"CvBridge Error: {e}")
-                return hand_position
-        # If no hand is detected, still publish the processed image
-        try:
-            ros_image = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
-            self.pub.publish(ros_image)
-        except CvBridgeError as e:
-            rospy.logerr(f"CvBridge Error: {e}")
+                x = int(index_finger_tip.x * image.shape[1])
+                return 'left' if x < image.shape[1] // 2 else 'right'
         return None
 class MoveToChair(smach.State):
     def __init__(self, left=None):
@@ -153,7 +121,6 @@ class MoveToBag(smach.State):
         smach.State.__init__(self, outcomes=['moved_to_bag'])
         self.client = SimpleActionClient('move_base', MoveBaseAction)
         self.client.wait_for_server()
-
     def execute(self, userdata):
         rospy.loginfo("Moving to bag...")
         # Implement logic to move to the bag
@@ -170,37 +137,50 @@ class MoveToBag(smach.State):
 class DetectAndGrabBag(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=['bag_grabbed'], input_keys=['image_in'])
-        self.bridge = CvBridge()
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        # Load the YOLOv5 model
         self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/user/Downloads/additional_ws/src/yolov3/best.pt').to(self.device)
+        # Publisher and Subscriber for messages
         self.pub = rospy.Publisher('Test', String, queue_size=10)
-
+        self.sub = rospy.Subscriber('Test1', String, self.message_callback)
+        self.g_received = False
+        self.bridge = CvBridge()
     def execute(self, userdata):
         rospy.loginfo("Detecting the bag...")
-        image = userdata.image_in
-        bag_detected = self.detect_bag(image)
-        if bag_detected:
-            # Publish message "B" to indicate the bag is detected and ready to grab
-            self.pub.publish("B")
-            return 'bag_grabbed'
+        if userdata.image_in is not None:
+            try:
+                cv_image = self.bridge.imgmsg_to_cv2(userdata.image_in, "bgr8")
+            except CvBridgeError as e:
+                rospy.logerr(f"CvBridge Error: {e}")
+                return 'bag_grabbed'
+
+            bag_detected = self.detect_bag(cv_image)
+            if bag_detected:
+                self.pub.publish("B")
+                rospy.loginfo("Waiting for message 'G'...")
+                rospy.sleep(1)
+                while not self.g_received:
+                    rospy.sleep(0.1)
+                rospy.loginfo("Received 'G', transitioning to next state.")
+                return 'bag_grabbed'
+            else:
+                rospy.logwarn("Bag not detected!")
+                return 'bag_grabbed'
         else:
-            rospy.logwarn("Bag not detected!")
-            return 'bag_grabbed'  # You can implement retry logic if needed
+            rospy.logwarn("No image available in 'image_in'.")
+            return 'bag_grabbed'
     def detect_bag(self, image):
-        try:
-            # Convert ROS Image to OpenCV format
-            cv_image = self.bridge.imgmsg_to_cv2(image, "bgr8")
-        except CvBridgeError as e:
-            rospy.logerr("CvBridge Error: {0}".format(e))
-            return False
-        # Perform object detection
-        results = self.model(cv_image)
+        results = self.model(image)
         for *xyxy, conf, cls in results.xyxy[0]:
             trust = conf.item() * 100
             if trust > 60 and self.model.names[int(cls)] == 'bag':
                 rospy.loginfo(f"Bag detected with confidence {trust:.2f}%")
                 return True
         return False
+    def message_callback(self, msg):
+        if msg.data == "G":
+            rospy.loginfo("Received message 'G'")
+            self.g_received = True
 class TurnAndFollow(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=['following_done'])
@@ -326,7 +306,6 @@ def main():
     # Create the state machine
     sm = smach.StateMachine(outcomes=['completed'])
     sm.userdata.hand_position = None
-    sm.userdata.image_in = None  # Initialize image_in with a valid image or placeholder
 
     with sm:
         smach.StateMachine.add('WAIT_FOR_YES', WaitForYes(), transitions={'yes': 'DETECT_HAND'})
@@ -338,7 +317,6 @@ def main():
         smach.StateMachine.add('TURN_AND_FOLLOW', TurnAndFollow(), transitions={'following_done': 'RETURN_TO_BASE'})
         smach.StateMachine.add('RETURN_TO_BASE', ReturnToBase(), transitions={'completed': 'completed'})
 
-    # Start the execution of the state machine
     outcome = sm.execute()
 
 

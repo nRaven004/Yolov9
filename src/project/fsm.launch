@@ -1,0 +1,8 @@
+<launch>
+    <!-- Launch the Kinect capture node -->
+    <node name="kinect_capture_node" pkg="project" type="kinect.py" output="screen"/>
+
+    <!-- Launch the FSM node -->
+    <node name="fsm_node" pkg="project" type="fsm_carry.py" output="screen"/>
+</launch>
+
