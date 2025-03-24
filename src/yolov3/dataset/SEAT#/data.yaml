@@ -1,0 +1,13 @@
+train: /home/user/catkin_ws/src/yolov3/dataset/SEAT#/train
+val: /home/user/catkin_ws/src/yolov3/dataset/SEAT#/valid
+test: /home/user/catkin_ws/src/yolov3/dataset/SEAT#/test
+
+nc: 1
+names: ['empty']
+
+roboflow:
+  workspace: pichanat
+  project: ddb-ayu2k
+  version: 2
+  license: Private
+  url: https://app.roboflow.com/pichanat/ddb-ayu2k/2

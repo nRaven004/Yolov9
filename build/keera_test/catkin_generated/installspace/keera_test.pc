@@ -1,0 +1,8 @@
+prefix=/home/user/catkin_ws/install
+
+Name: keera_test
+Description: Description of keera_test
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

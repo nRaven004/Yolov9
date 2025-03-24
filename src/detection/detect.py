@@ -34,7 +34,7 @@ face_names = []
 process_this_frame = True
 
 # Start video capture
-video_capture = cv2.VideoCapture(1)
+video_capture = cv2.VideoCapture(0)
 
 while True:
     ret, frame = video_capture.read()

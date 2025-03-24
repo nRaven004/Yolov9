@@ -1,0 +1,13 @@
+train: /home/user/catkin_ws/src/yolov3/dataset/bag_comp/train
+val: /home/user/catkin_ws/src/yolov3/dataset/bag_comp/valid
+test: /home/user/catkin_ws/src/yolov3/dataset/bag_comp/test
+
+nc: 1
+names: ['bag']
+
+roboflow:
+  workspace: pichanat
+  project: roscomp
+  version: 1
+  license: Private
+  url: https://app.roboflow.com/pichanat/roscomp/1

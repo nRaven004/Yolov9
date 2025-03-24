@@ -1,0 +1,13 @@
+train: /home/user/catkin_ws/src/yolov3/dataset/bag_test_accurate/train
+val: /home/user/catkin_ws/src/yolov3/dataset/bag_test_accurate/valid
+test: /home/user/catkin_ws/src/yolov3/dataset/bag_test_accurate/test
+
+nc: 1
+names: ['bag']
+
+roboflow:
+  workspace: pichanat
+  project: test_accurate
+  version: 1
+  license: Private
+  url: https://app.roboflow.com/pichanat/test_accurate/1
